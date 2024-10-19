@@ -564,6 +564,7 @@ dependencies = [
 name = "irc_bot"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dotenv",
  "futures",
  "irc",

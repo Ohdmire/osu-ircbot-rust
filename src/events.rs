@@ -67,6 +67,10 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             
             // 获取谱面信息
             let beatmap = bot.osu_api.get_beatmap_info(bot.beatmap_id).await?;
+
+            let beatmap_info = beatmap.get_formatted_info();
+
+            bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &beatmap_info).await?;
             
             // 更新 beatmap_path
             bot.beatmap_path = format!("./maps/{}.osu", bot.beatmap_id);
@@ -88,10 +92,8 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             let pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 98%: {:.2}pp | 100%: {:.2}pp | Max: {:.2}pp", 
                                   stars, pp_95_fc, pp_98_fc, max_pp, max_pp);
             
-            let beatmap_info = format!("Beatmap: {} [{}] | Length: {}s | Status: {}", 
-                                       beatmap.beatmapset_id, beatmap.version, beatmap.total_length, beatmap.status);
             
-            bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &beatmap_info).await?;
+            
             bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &pp_info).await?;
         }
     }
