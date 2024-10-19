@@ -8,18 +8,22 @@ use std::path::Path;
 pub async fn handle_event(bot: &mut MyBot, target: &str, msg: &str) -> Result<(), Box<dyn Error>> {
     match (target, msg) {
         ("ATRI1024", m) if m.contains("Created the tournament match") => {
-            parse_room_id(bot, m).await?;
-            bot.join_channel(&format!("#mp_{}", *bot.room_id.lock().await)).await?;
-            bot.set_room_password(bot.room_password.clone()).await?;
+            handle_create_room(bot, m).await?;
         }
         (_, m) if m.contains("Beatmap changed to") => {
             handle_beatmap_change(bot, m).await?;
+        }
+        (_, m) if m.contains("All players are ready") => {
+            handle_match_ready(bot).await?;
         }
         (_, m) if m.contains("The match has started") => {
             handle_match_start(bot).await?;
         }
         (_, m) if m.contains("The match has finished") => {
             handle_match_finish(bot).await?;
+        }
+        (_, m) if m.contains("Aborted the match") => {
+            handle_match_abort(bot).await?;
         }
         (_, m) if m.contains("joined in slot") => {
             handle_player_join(bot, m).await?;
@@ -29,6 +33,13 @@ pub async fn handle_event(bot: &mut MyBot, target: &str, msg: &str) -> Result<()
         }
         _ => {}
     }
+    Ok(())
+}
+
+async fn handle_create_room(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
+    parse_room_id(bot, msg).await?;
+    bot.join_channel(&format!("#mp_{}", *bot.room_id.lock().await)).await?;
+    bot.set_room_password(bot.room_password.clone()).await?;
     Ok(())
 }
 
@@ -87,17 +98,43 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
     Ok(())
 }
 
+async fn handle_match_ready(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
+    bot.start_game().await?;
+    Ok(())
+}
+
 async fn handle_match_start(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
-    bot.game_start_time = Some(std::time::Instant::now());
+    bot.beatmap_start_time = Some(std::time::Instant::now());
     println!("Match started");
     Ok(())
 }
 
 async fn handle_match_finish(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
-    bot.game_start_time = None;
+    bot.beatmap_end_time = Some(std::time::Instant::now());
     println!("Match finished");
-    bot.rotate_host().await?;
+    // 比赛结束时，删除不在player_list中的玩家
+    bot.remove_player_not_in_list();
+    if is_fully_played(bot) {
+        bot.rotate_host().await?;
+    }
+    bot.send_queue().await?;
     Ok(())
+}
+
+async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
+    bot.beatmap_end_time = Some(std::time::Instant::now());
+    println!("Match aborted");
+    if is_fully_played(bot) {
+        bot.rotate_host().await?;
+    }
+    bot.send_queue().await?;
+    Ok(())
+}
+
+fn is_fully_played(bot: &MyBot) -> bool {
+    let played_len = bot.beatmap_end_time.unwrap().duration_since(bot.beatmap_start_time.unwrap()).as_secs();
+    println!("Played length: {}s ? 1/2beatmap_length: {}", played_len, bot.beatmap_length / 2);
+    played_len >= bot.beatmap_length / 2
 }
 
 async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {

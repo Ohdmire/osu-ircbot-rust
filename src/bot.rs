@@ -18,6 +18,8 @@ pub struct MyBot {
     client: Client,
     pub player_list: Vec<String>,
     pub room_host_list: Vec<String>,
+    pub beatmap_start_time: Option<Instant>,
+    pub beatmap_end_time: Option<Instant>,
     pub approved_abort_list: Vec<String>,
     pub approved_start_list: Vec<String>,
     pub approved_host_rotate_list: Vec<String>,
@@ -40,6 +42,8 @@ impl MyBot {
             client,
             player_list: Vec::new(),
             room_host_list: Vec::new(),
+            beatmap_start_time: None,
+            beatmap_end_time: None,
             approved_abort_list: Vec::new(),
             approved_start_list: Vec::new(),
             approved_host_rotate_list: Vec::new(),
@@ -111,6 +115,14 @@ impl MyBot {
         Ok(())
     }
 
+    pub async fn send_message(&self, target: &str, message: &str) -> Result<(), irc::error::Error> {
+        self.client.send_privmsg(target, message)
+    }
+
+    pub async fn join_channel(&self, channel: &str) -> Result<(), irc::error::Error> {
+        self.client.send_join(channel)
+    }
+
     async fn check_room_status(room_id: u32) -> Result<(), Box<dyn Error>> {
         println!("Checking status of room: {}", room_id);
         // 这里你通常会使用 osu! API 检查房间状态
@@ -121,10 +133,8 @@ impl MyBot {
     pub async fn rotate_host(&mut self) -> Result<(), Box<dyn Error>> {
         if let Some(new_host) = self.room_host_list.pop() {
             self.room_host_list.insert(0, new_host.clone());
-            let room_id = *self.room_id.lock().await;
-            self.send_message(&format!("#mp_{}", room_id), &format!("!mp host {}", new_host)).await?;
-            self.room_host = new_host;
-            println!("Rotated host to: {}", self.room_host);
+            self.set_host(&new_host).await?;
+            println!("Rotated host to: {}", new_host);
         }
         Ok(())
     }
@@ -139,6 +149,11 @@ impl MyBot {
         })
     }
 
+    pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
+        self.pp_calculator.calculate_pp(mods, combo, accuracy, 0)
+    }
+
+
     pub fn add_player(&mut self, name: String) {
         if !self.player_list.contains(&name) {
             self.player_list.push(name.clone());
@@ -152,12 +167,12 @@ impl MyBot {
         self.player_list.retain(|n| n != name);
     }
 
-    pub async fn send_message(&self, target: &str, message: &str) -> Result<(), irc::error::Error> {
-        self.client.send_privmsg(target, message)
-    }
-
-    pub async fn join_channel(&self, channel: &str) -> Result<(), irc::error::Error> {
-        self.client.send_join(channel)
+    pub fn remove_player_not_in_list(&mut self) {
+        // 取player_list和room_host_list的交集，更新room_host_list
+        self.room_host_list = self.room_host_list.iter()
+            .filter(|player| self.player_list.contains(player))
+            .cloned()
+            .collect();
     }
 
     pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
@@ -172,12 +187,30 @@ impl MyBot {
         Ok(())
     }
 
-    pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
-        self.pp_calculator.calculate_pp(mods, combo, accuracy, 0)
-    }
-
     pub async fn set_host(&mut self, player_name: &str) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp host {}", player_name)).await?;
         Ok(())
     }
+
+    pub async fn start_game(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp start").await?;
+        Ok(())
+    }
+
+    pub async fn abort_game(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp abort").await?;
+        Ok(())
+    }
+
+    pub async fn close_room(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp close").await?;
+        Ok(())
+    }
+
+    pub async fn send_queue(&mut self) -> Result<(), Box<dyn Error>> {
+        let queue = self.player_list.join("->");
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &queue).await?;
+        Ok(())
+    }
+
 }
