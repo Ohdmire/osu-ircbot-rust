@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod pp_calculator;
 mod osu_api;
+mod events;
 
 use bot::MyBot;
 use config::get_config;

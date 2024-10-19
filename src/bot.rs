@@ -10,9 +10,10 @@ use regex::Regex;
 use tokio::time::interval;
 use self::pp_calculator::PPCalculator;
 use self::osu_api::OsuApi;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
-
+use crate::events::handle_event;
+use std::env;
 pub struct MyBot {
     client: Client,
     pub player_list: Vec<String>,
@@ -23,12 +24,13 @@ pub struct MyBot {
     pub approved_close_list: Vec<String>,
     pub room_host: String,
     pub room_id: Arc<TokioMutex<u32>>,
+    pub room_password: String,
     pub game_start_time: Option<Instant>,
     pub beatmap_id: u32,
     pub beatmap_length: u64,
     pub beatmap_path: String,
-    pp_calculator: PPCalculator,
-    osu_api: OsuApi,
+    pub pp_calculator: PPCalculator,
+    pub osu_api: OsuApi,
 }
 
 impl MyBot {
@@ -44,6 +46,7 @@ impl MyBot {
             approved_close_list: Vec::new(),
             room_host: String::new(),
             room_id: Arc::new(TokioMutex::new(0)),
+            room_password: env::var("ROOM_PASSWORD").unwrap_or_else(|_| "".to_string()),
             game_start_time: None,
             beatmap_id: 0,
             beatmap_length: 0,
@@ -87,14 +90,8 @@ impl MyBot {
                 if msg.starts_with("!") {
                     let prefix = self.get_nickname(&message.prefix);
                     handle_command(self, target, msg, prefix).await?;
-                } else if target == "ATRI1024" && msg.contains("Created the tournament match") {
-                    self.parse_room_id(msg).await?;
-                } else if msg.contains("Beatmap changed to") {
-                    self.handle_beatmap_change(msg).await?;
-                } else if msg.contains("The match has started") {
-                    self.handle_match_start().await?;
-                } else if msg.contains("The match has finished") {
-                    self.handle_match_finish().await?;
+                } else {
+                    handle_event(self, target, msg).await?;
                 }
             }
             Command::JOIN(channel, _, _) => {
@@ -111,66 +108,6 @@ impl MyBot {
             }
             _ => {}
         }
-        Ok(())
-    }
-
-    async fn parse_room_id(&mut self, msg: &str) -> Result<(), Box<dyn Error>> {
-        let re = Regex::new(r"https://osu\.ppy\.sh/mp/(\d+)")?;
-        if let Some(captures) = re.captures(msg) {
-            if let Some(id) = captures.get(1) {
-                let new_room_id = id.as_str().parse::<u32>()?;
-                {
-                    let mut room_id = self.room_id.lock().await;
-                    *room_id = new_room_id;
-                }
-                println!("Room ID set to: {}", new_room_id);
-                self.join_channel(&format!("#mp_{}", new_room_id)).await?;
-                self.set_room_password("123").await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_beatmap_change(&mut self, msg: &str) -> Result<(), Box<dyn Error>> {
-        let re = Regex::new(r"Beatmap changed to: (.*) \((https://osu\.ppy\.sh/b/(\d+))\)")?;
-        if let Some(captures) = re.captures(msg) {
-            if let Some(id) = captures.get(3) {
-                self.beatmap_id = id.as_str().parse::<u32>()?;
-                println!("Beatmap ID changed to: {}", self.beatmap_id);
-                
-                // 获取谱面信息
-                let beatmap = self.osu_api.get_beatmap(self.beatmap_id).await?;
-                
-                // 更新 beatmap_path
-                self.beatmap_path = format!("./maps/{}.osu", self.beatmap_id);
-                self.pp_calculator = PPCalculator::new(self.beatmap_path.clone());
-
-                let mods = 0;
-                let (stars, pp, max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc) = self.pp_calculator.calculate_beatmap_details(mods)?;
-
-                let pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 98%: {:.2}pp | 100%: {:.2}pp | Max: {:.2}pp", 
-                                      stars, pp_95_fc, pp_98_fc, max_pp, max_pp);
-                
-                let beatmap_info = format!("Beatmap: {} [{}] | Length: {}s | Status: {}", 
-                                           beatmap.beatmapset_id, beatmap.version, beatmap.total_length, beatmap.status);
-                
-                self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &beatmap_info).await?;
-                self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &pp_info).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_match_start(&mut self) -> Result<(), Box<dyn Error>> {
-        self.game_start_time = Some(Instant::now());
-        println!("Match started");
-        Ok(())
-    }
-
-    async fn handle_match_finish(&mut self) -> Result<(), Box<dyn Error>> {
-        self.game_start_time = None;
-        println!("Match finished");
-        self.rotate_host().await?;
         Ok(())
     }
 
@@ -223,13 +160,13 @@ impl MyBot {
         self.client.send_join(channel)
     }
 
-    async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_message("BanchoBot", "!mp make ATRI1024's room").await?;
         println!("Sent room creation request to BanchoBot");
         Ok(())
     }
 
-    async fn set_room_password(&mut self, password: &str) -> Result<(), Box<dyn Error>> {
+    pub async fn set_room_password(&mut self, password: String) -> Result<(), Box<dyn Error>> {
         let room_id = *self.room_id.lock().await;
         self.send_message(&format!("#mp_{}", room_id), &format!("!mp password {}", password)).await?;
         Ok(())
@@ -237,5 +174,10 @@ impl MyBot {
 
     pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
         self.pp_calculator.calculate_pp(mods, combo, accuracy, 0)
+    }
+
+    pub async fn set_host(&mut self, player_name: &str) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp host {}", player_name)).await?;
+        Ok(())
     }
 }
