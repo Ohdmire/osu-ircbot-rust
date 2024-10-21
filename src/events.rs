@@ -72,6 +72,9 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
 
             bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &beatmap_info).await?;
             
+            // 下载谱面
+            bot.osu_api.download_beatmap(bot.beatmap_id).await?;
+
             // 更新 beatmap_path
             bot.beatmap_path = format!("./maps/{}.osu", bot.beatmap_id);
             
@@ -87,13 +90,11 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             bot.pp_calculator = PPCalculator::new(bot.beatmap_path.clone());
 
             let mods = 0;
-            let (stars, pp, max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc) = bot.pp_calculator.calculate_beatmap_details(mods)?;
+            let (stars, max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc) = bot.pp_calculator.calculate_beatmap_details(mods)?;
 
-            let pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 98%: {:.2}pp | 100%: {:.2}pp | Max: {:.2}pp", 
-                                  stars, pp_95_fc, pp_98_fc, max_pp, max_pp);
-            
-            
-            
+            let pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 96%: {:.2}pp | 97%: {:.2}pp | 98%: {:.2}pp | 99%: {:.2}pp | Max: {:.2}pp", 
+                                  stars, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc, max_pp);
+
             bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &pp_info).await?;
         }
     }

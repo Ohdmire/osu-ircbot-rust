@@ -14,6 +14,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use crate::events::handle_event;
 use std::env;
+use std::collections::HashMap;
+use crate::osu_api::User;
 pub struct MyBot {
     client: Client,
     pub player_list: Vec<String>,
@@ -33,6 +35,7 @@ pub struct MyBot {
     pub beatmap_path: String,
     pub pp_calculator: PPCalculator,
     pub osu_api: OsuApi,
+    pub player_info: HashMap<String, User>,
 }
 
 impl MyBot {
@@ -57,6 +60,7 @@ impl MyBot {
             beatmap_path: String::new(),
             pp_calculator: PPCalculator::new(String::new()),
             osu_api: OsuApi::new(client_id, client_secret),
+            player_info: HashMap::new(),
         })
     }
 
@@ -81,7 +85,12 @@ impl MyBot {
         });
 
         while let Some(message) = stream.next().await.transpose()? {
-            self.handle_message(message).await?;
+            match  self.handle_message(message).await {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error handling message: {}", e);
+                }
+            }
         }
 
         Ok(())
@@ -101,13 +110,11 @@ impl MyBot {
             Command::JOIN(channel, _, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
                     println!("{} joined {}", nick, channel);
-                    self.add_player(nick);
                 }
             }
             Command::PART(channel, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
                     println!("{} left {}", nick, channel);
-                    self.remove_player(&nick);
                 }
             }
             _ => {}
@@ -152,7 +159,6 @@ impl MyBot {
     pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
         self.pp_calculator.calculate_pp(mods, combo, accuracy, 0)
     }
-
 
     pub fn add_player(&mut self, name: String) {
         if !self.player_list.contains(&name) {
@@ -211,6 +217,15 @@ impl MyBot {
         let queue = self.player_list.join("->");
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &queue).await?;
         Ok(())
+    }
+
+    pub async fn get_user_mut(&mut self, irc_name: &str) -> Option<&mut User> {
+        if !self.player_info.contains_key(irc_name) {
+            let mut user = User::new(irc_name.to_string(), 0, "".to_string());
+            user.update(&mut self.osu_api).await.unwrap();
+            self.player_info.insert(irc_name.to_string(), user);
+        }
+        self.player_info.get_mut(irc_name)
     }
 
 }

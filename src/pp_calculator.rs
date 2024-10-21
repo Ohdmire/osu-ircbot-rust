@@ -36,7 +36,7 @@ impl PPCalculator {
         Ok((stars, pp, max_pp))
     }
 
-    pub fn calculate_beatmap_details(&self, mods: u32) -> Result<(f64, f64, f64, f64, f64, f64, f64, f64), Box<dyn Error>> {
+    pub fn calculate_beatmap_details(&self, mods: u32) -> Result<(f64, f64, f64, f64, f64, f64, f64), Box<dyn Error>> {
         let map = Beatmap::from_path(&self.beatmap_path)?;
 
         let diff_attrs = rosu_pp::Difficulty::new()
@@ -46,46 +46,20 @@ impl PPCalculator {
         let stars = diff_attrs.stars();
 
         let perf_attrs = rosu_pp::Performance::new(diff_attrs)
-            .mods(mods)
-            .calculate();
+            .mods(mods);
 
-        let pp = perf_attrs.pp();
+        let max_pp = perf_attrs.clone().accuracy(100.0).calculate().pp();
 
-        let max_pp = perf_attrs.clone().performance()
-            .mods(mods)
-            .calculate()
-            .pp();
+        let pp_95_fc = perf_attrs.clone().accuracy(95.0).calculate().pp();
 
-        let pp_95_fc = perf_attrs.clone().performance()
-            .mods(mods)
-            .accuracy(0.95)
-            .calculate()
-            .pp();
+        let pp_96_fc = perf_attrs.clone().accuracy(96.0).calculate().pp();
 
-        let pp_96_fc = perf_attrs.clone().performance()
-            .mods(mods)
-            .accuracy(0.96)
-            .calculate()
-            .pp();
+        let pp_97_fc = perf_attrs.clone().accuracy(97.0).calculate().pp();
 
-        let pp_97_fc = perf_attrs.clone().performance()
-            .mods(mods)
-            .accuracy(0.97)
-            .calculate()
-            .pp();
+        let pp_98_fc = perf_attrs.clone().accuracy(98.0).calculate().pp();
 
-        let pp_98_fc = perf_attrs.clone().performance()
-            .mods(mods)
-            .accuracy(0.98)
-            .calculate()
-            .pp();
-
-        let pp_99_fc = perf_attrs.clone().performance()
-            .mods(mods)
-            .accuracy(0.99)
-            .calculate()
-            .pp();
+        let pp_99_fc = perf_attrs.clone().accuracy(99.0).calculate().pp();
             
-        Ok((stars, pp, max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc))
+        Ok((stars,max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc))
     }
 }
