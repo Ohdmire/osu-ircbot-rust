@@ -70,17 +70,18 @@ async fn handle_recent_score(bot: &mut MyBot, target: &str, irc_name: &str, incl
         Ok(Some(score)) => {
             let formatted_score = format_score(&username, &score);
             bot.send_message(target, &formatted_score).await?;
+            // 这里就要算pp了
         }
         Ok(None) => {
             let message = if include_fails {
-                format!("No recent scores found for {}.", username)
+                format!("没有找到{}最近的成绩", username)
             } else {
-                format!("No recent pass scores found for {}.", username)
+                format!("没有找到{}最近pass的成绩", username)
             };
             bot.send_message(target, &message).await?;
         }
         Err(e) => {
-            bot.send_message(target, &format!("Failed to get recent score: {}", e)).await?;
+            bot.send_message(target, &format!("获取最近成绩失败: {}", e)).await?;
         }
     }
     Ok(())

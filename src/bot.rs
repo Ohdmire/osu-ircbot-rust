@@ -31,6 +31,7 @@ pub struct MyBot {
     pub approved_close_list: Vec<String>,
     pub room_host: String,
     pub room_id: Arc<TokioMutex<u32>>,
+    pub room_name: String,
     pub room_password: String,
     pub beatmap_id: u32,
     pub beatmap_length: u64,
@@ -64,6 +65,7 @@ impl MyBot {
             approved_close_list: Vec::new(),
             room_host: String::new(),
             room_id: Arc::new(TokioMutex::new(last_room_id)),
+            room_name: env::var("ROOM_NAME").unwrap_or_else(|_| "".to_string()),
             room_password: env::var("ROOM_PASSWORD").unwrap_or_else(|_| "".to_string()),
             beatmap_id: 0,
             beatmap_length: 0,
@@ -112,17 +114,17 @@ impl MyBot {
         let mut stream = self.client.stream()?;
 
         // Start the periodic task
-        let room_id = Arc::clone(&self.room_id);
-        tokio::spawn(async move {
-            let mut interval = interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                let current_room_id = *room_id.lock().await;
-                if let Err(e) = Self::check_room_status(current_room_id).await {
-                    eprintln!("Error checking room status: {}", e);
-                }
-            }
-        });
+        // let room_id = Arc::clone(&self.room_id);
+        // tokio::spawn(async move {
+        //     let mut interval = interval(Duration::from_secs(60));
+        //     loop {
+        //         interval.tick().await;
+        //         let current_room_id = *room_id.lock().await;
+        //         if let Err(e) = Self::check_room_status(current_room_id).await {
+        //             eprintln!("检查房间状态失败: {}", e);
+        //         }
+        //     }
+        // });
 
         while let Some(message) = stream.next().await.transpose()? {
             self.handle_message(message).await.expect("Error handling message");
@@ -134,7 +136,7 @@ impl MyBot {
     async fn handle_message(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
         match &message.command {
             Command::PRIVMSG(target, msg) => {
-                println!("Received message in {}: {}", target, msg);
+                println!("收到消息: {} <- {}", target, msg);
                 if msg.starts_with("!") {
                     let prefix = self.get_nickname(&message.prefix);
                     handle_command(self, target, msg, prefix).await?;
@@ -149,7 +151,12 @@ impl MyBot {
             }
             Command::PART(channel, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
-                    println!("{} left {}", nick, channel);
+                    if nick == "ATRI1024" {
+                        // 延迟10秒后重新创建mp房间
+                        tokio::time::sleep(Duration::from_secs(10)).await;
+                        self.create_room().await?;
+                        println!("{} left {}", nick, channel);
+                    }
                 }
             }
             _ => {}
@@ -193,8 +200,8 @@ impl MyBot {
         })
     }
 
-    pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
-        self.pp_calculator.calculate_pp(mods, combo, accuracy, 0)
+    pub fn calculate_pp(&self, beatmap_id: u32, mods: u32, combo: u32, accuracy: f64) -> Result<(f64, f64, f64), Box<dyn Error>> {
+        self.pp_calculator.calculate_pp(beatmap_id, mods, combo, accuracy, 0)
     }
 
     pub fn add_player(&mut self, name: String) {
@@ -219,7 +226,7 @@ impl MyBot {
     }
 
     pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_message("BanchoBot", "!mp make ATRI1024's room").await?;
+        self.send_message("BanchoBot", "!mp make ATRI高性能mp房测试ver.").await?;
         println!("Sent room creation request to BanchoBot");
         
         // 等待一段时间,确保房间ID已经被设置
@@ -283,7 +290,10 @@ impl MyBot {
     }
 
     pub async fn send_queue(&mut self) -> Result<(), Box<dyn Error>> {
-        let queue = self.player_list.join("->");
+        let queue = self.player_list.iter()
+            .map(|name| format!("\u{200B}{}", name))
+            .collect::<Vec<String>>()
+            .join("->");
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &queue).await?;
         Ok(())
     }

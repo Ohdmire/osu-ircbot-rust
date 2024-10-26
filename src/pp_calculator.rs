@@ -10,7 +10,7 @@ impl PPCalculator {
         Self { beatmap_path }
     }
 
-    pub fn calculate_pp(&self, mods: u32, combo: u32, accuracy: f64, misses: u32) -> Result<(f64, f64, f64), Box<dyn Error>> {
+    pub fn calculate_pp(&self, beatmap_id: u32, mods: u32, combo: u32, accuracy: f64, misses: u32) -> Result<(f64, f64, f64), Box<dyn Error>> {
         let map = Beatmap::from_path(&self.beatmap_path)?;
 
         let diff_attrs = rosu_pp::Difficulty::new()

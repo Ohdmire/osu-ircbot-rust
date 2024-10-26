@@ -166,7 +166,7 @@ impl Beatmap {
                     .ok()
                     .map(|dt| dt.with_timezone(&Utc).format("%Y-%m-%d").to_string())
             })
-            .unwrap_or_else(|| "Unknown Date".to_string());
+            .unwrap_or_else(|| "未知日期".to_string());
 
         let length_seconds = self.total_length;
         let osudirect_url = self.url.clone();
@@ -191,7 +191,7 @@ impl Score {
         DateTime::parse_from_rfc3339(&self.created_at)
             .ok()
             .map(|dt| dt.with_timezone(&Utc).format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| "Unknown Date".to_string())
+            .unwrap_or_else(|| "未知日期".to_string())
     }
 }
 
@@ -200,7 +200,7 @@ impl RecentScoreResponse {
         DateTime::parse_from_rfc3339(&self.created_at)
             .ok()
             .map(|dt| dt.with_timezone(&Utc).format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| "Unknown Date".to_string())
+            .unwrap_or_else(|| "未知日期".to_string())
     }
 
     pub fn format_url(&self) -> String {
