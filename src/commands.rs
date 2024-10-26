@@ -31,10 +31,10 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
             bot.calculate_total_time_left().await?;
         }
         "!help" => {
-            todo!()
+            
         }
         "!pp" => {
-            todo!()
+            
         }
         "!pr" => {
             handle_recent_score(bot, target, &irc_name, false).await?;

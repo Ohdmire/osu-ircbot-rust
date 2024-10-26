@@ -320,7 +320,7 @@ impl MyBot {
                 self.approved_skip_list.push(irc_name.to_string());
             }
         // 判断列表是否满足人数的一半 或者是房主本人
-        if self.approved_skip_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize || irc_name == self.room_host.replace(" ", "_") {
+        if self.approved_skip_list.len() >= (self.player_list.len() / 2) || irc_name == self.room_host.replace(" ", "_") {
             self.rotate_host().await?;
             self.approved_skip_list.clear();
         }
@@ -339,7 +339,7 @@ impl MyBot {
             }
         }
         // 判断列表是否满足人数的一半
-        if self.approved_close_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize {
+        if self.approved_close_list.len() >= (self.player_list.len() / 2) {
             self.close_room().await?;
             self.approved_close_list.clear();
         }
@@ -357,7 +357,7 @@ impl MyBot {
             }
         }
         // 判断列表是否满足人数的一半
-        if self.approved_start_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize {
+        if self.approved_start_list.len() >= (self.player_list.len() / 2) {
             self.start_game().await?;
             self.approved_start_list.clear();
         }
