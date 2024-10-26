@@ -38,7 +38,7 @@ pub struct Beatmap {
     pub id: u32,
     pub beatmapset_id: u32,
     pub status: String,
-    pub total_length: u32,
+    pub total_length: u64,
     pub version: String,
     pub difficulty_rating: f32,
     pub accuracy: f32,

@@ -4,17 +4,13 @@ use std::error::Error;
 pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
     let command = msg.split_whitespace().next().unwrap_or("");
     let irc_name = prefix.unwrap_or_default();
-    println!("irc_name: {}", irc_name);
     match command {
         "!hello" => {
             let response = format!("Hello, {}!", &irc_name);
             bot.send_message(target, &response).await?;
         }
-        "!create" => {
-            bot.create_room().await?;
-        }
-        "!start" => {
-            bot.start_game().await?;
+        "!info" | "!i" => {
+            bot.send_beatmap_info().await?;
         }
         "!abort" => {
             bot.abort_game().await?;
@@ -23,10 +19,16 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
             bot.send_queue().await?;
         }
         "!skip" => {
-            todo!()
+            bot.vote_skip(&irc_name).await?;
         }
         "!close" => {
-            todo!()
+            bot.vote_close(&irc_name).await?;
+        }
+        "!start" => {
+            bot.vote_start(&irc_name).await?;
+        }
+        "!ttl" => {
+            bot.calculate_total_time_left().await?;
         }
         "!help" => {
             todo!()
@@ -34,7 +36,7 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
         "!pp" => {
             todo!()
         }
-        "!pr" => {
+        "!s" => {
             // 先获取用户 ID
             let user_id = bot.get_user_mut(&irc_name).await.unwrap().id.clone();
             // 获取username

@@ -16,6 +16,9 @@ use crate::events::handle_event;
 use std::env;
 use std::collections::HashMap;
 use crate::osu_api::User;
+use std::fs::File;
+use std::io::{Write, Read};
+
 pub struct MyBot {
     client: Client,
     pub player_list: Vec<String>,
@@ -24,24 +27,29 @@ pub struct MyBot {
     pub beatmap_end_time: Option<Instant>,
     pub approved_abort_list: Vec<String>,
     pub approved_start_list: Vec<String>,
-    pub approved_host_rotate_list: Vec<String>,
+    pub approved_skip_list: Vec<String>,
     pub approved_close_list: Vec<String>,
     pub room_host: String,
     pub room_id: Arc<TokioMutex<u32>>,
     pub room_password: String,
-    pub game_start_time: Option<Instant>,
     pub beatmap_id: u32,
     pub beatmap_length: u64,
     pub beatmap_path: String,
     pub pp_calculator: PPCalculator,
     pub osu_api: OsuApi,
     pub player_info: HashMap<String, User>,
+    pub beatmap_info: String,
+    pub beatmap_pp_info: String,
 }
 
 impl MyBot {
-    pub async fn new(config: Config, client_id: String, client_secret: String) -> Result<Self, irc::error::Error> {
+    pub async fn new(config: Config, client_id: String, client_secret: String) -> Result<Self, Box<dyn Error>> {
         let client = Client::from_config(config).await?;
-        Ok(MyBot {
+        
+        // 尝试读取上次保存的房间ID
+        let last_room_id = Self::read_last_room_id().unwrap_or(0);
+        
+        let bot = MyBot {
             client,
             player_list: Vec::new(),
             room_host_list: Vec::new(),
@@ -49,25 +57,51 @@ impl MyBot {
             beatmap_end_time: None,
             approved_abort_list: Vec::new(),
             approved_start_list: Vec::new(),
-            approved_host_rotate_list: Vec::new(),
+            approved_skip_list: Vec::new(),
             approved_close_list: Vec::new(),
             room_host: String::new(),
-            room_id: Arc::new(TokioMutex::new(0)),
+            room_id: Arc::new(TokioMutex::new(last_room_id)),
             room_password: env::var("ROOM_PASSWORD").unwrap_or_else(|_| "".to_string()),
-            game_start_time: None,
             beatmap_id: 0,
             beatmap_length: 0,
             beatmap_path: String::new(),
             pp_calculator: PPCalculator::new(String::new()),
             osu_api: OsuApi::new(client_id, client_secret),
             player_info: HashMap::new(),
-        })
+            beatmap_info: String::new(),
+            beatmap_pp_info: String::new(),
+        };
+
+        Ok(bot)
+    }
+
+    pub fn read_last_room_id() -> Result<u32, Box<dyn Error>> {
+        let mut file = File::open("last_room_id.txt")?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        Ok(contents.trim().parse()?)
+    }
+
+    pub async fn join_last_room(&self) -> Result<(), Box<dyn Error>> {
+        let room_id = *self.room_id.lock().await;
+        self.join_channel(&format!("#mp_{}", room_id)).await?;
+        println!("Joined last room: #mp_{}", room_id);
+        Ok(())
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         self.client.identify()?;
 
-        self.create_room().await?;
+        let room_id = *self.room_id.lock().await;
+        if room_id == 0 {
+            // 如果没有上次的房间ID,创建新房间
+            self.create_room().await?;
+        } else {
+            println!("Using existing room: #mp_{}", room_id);
+            // 尝试加入上次的房间
+            self.join_last_room().await?;
+            self.get_mp_settings().await?;
+        }
 
         let mut stream = self.client.stream()?;
 
@@ -85,12 +119,7 @@ impl MyBot {
         });
 
         while let Some(message) = stream.next().await.transpose()? {
-            match  self.handle_message(message).await {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error handling message: {}", e);
-                }
-            }
+            self.handle_message(message).await.expect("Error handling message");
         }
 
         Ok(())
@@ -123,7 +152,9 @@ impl MyBot {
     }
 
     pub async fn send_message(&self, target: &str, message: &str) -> Result<(), irc::error::Error> {
-        self.client.send_privmsg(target, message)
+        self.client.send_privmsg(target, message)?;
+        println!("发送消息: {} -> {}", target, message);
+        Ok(())
     }
 
     pub async fn join_channel(&self, channel: &str) -> Result<(), irc::error::Error> {
@@ -184,6 +215,18 @@ impl MyBot {
     pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_message("BanchoBot", "!mp make ATRI1024's room").await?;
         println!("Sent room creation request to BanchoBot");
+        
+        // 等待一段时间,确保房间ID已经被设置
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        
+        // 保存房间ID到文件
+        self.save_room_id_to_file().await?;
+        
+        Ok(())
+    }
+
+    pub async fn get_mp_settings(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp settings").await?;
         Ok(())
     }
 
@@ -193,8 +236,28 @@ impl MyBot {
         Ok(())
     }
 
+    pub async fn calculate_total_time_left(&self) -> Result<(), Box<dyn Error>> {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.beatmap_start_time.unwrap_or(now));
+        if elapsed == Duration::from_secs(0) {
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "游戏尚未开始").await?;
+            return Ok(());
+        }
+        else {
+            let total_time_left = self.beatmap_length - elapsed.as_secs();
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("剩余游玩时间: {}s", total_time_left)).await?;
+        }
+        Ok(())
+    }
+
     pub async fn set_host(&mut self, player_name: &str) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp host {}", player_name)).await?;
+        self.room_host = player_name.to_string();
+        Ok(())
+    }
+
+    pub async fn set_free_mod(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp mods FreeMod").await?;
         Ok(())
     }
 
@@ -228,4 +291,71 @@ impl MyBot {
         self.player_info.get_mut(irc_name)
     }
 
+    pub async fn send_beatmap_info(&mut self) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &self.beatmap_info).await?;
+        Ok(())
+    }
+
+    pub async fn vote_skip(&mut self, irc_name: &str) -> Result<(), Box<dyn Error>> {
+        // 判断irc_name是否在player_list中
+        if self.player_list.contains(&irc_name.to_string()) {
+            // 如果不在approved_skip_list中，则添加到approved_skip_list中
+            if !self.approved_skip_list.contains(&irc_name.to_string()) {
+                self.approved_skip_list.push(irc_name.to_string());
+            }
+        // 判断列表是否满足人数的一半 或者是房主本人
+        if self.approved_skip_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize || irc_name == self.room_host.replace(" ", "_") {
+            self.rotate_host().await?;
+            self.approved_skip_list.clear();
+        }
+        else {
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("{} / {} in the skip process", self.approved_skip_list.len(), (self.player_list.len() as f64 / 2.0).ceil() as usize)).await?;
+        }
+    }
+        Ok(())
+    }
+    pub async fn vote_close(&mut self, irc_name: &str) -> Result<(), Box<dyn Error>> {
+        // 判断irc_name是否在player_list中
+        if self.player_list.contains(&irc_name.to_string()) {
+            // 如果不在approved_close_list中，则添加到approved_close_list中
+            if !self.approved_close_list.contains(&irc_name.to_string()) {
+                self.approved_close_list.push(irc_name.to_string());
+            }
+        }
+        // 判断列表是否满足人数的一半
+        if self.approved_close_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize {
+            self.close_room().await?;
+            self.approved_close_list.clear();
+        }
+        else {
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("{} / {} in the close process", self.approved_close_list.len(), (self.player_list.len() as f64 / 2.0).ceil() as usize)).await?;
+        }
+        Ok(())
+    }
+    pub async fn vote_start(&mut self, irc_name: &str) -> Result<(), Box<dyn Error>> {
+        // 判断irc_name是否在player_list中
+        if self.player_list.contains(&irc_name.to_string()) {
+            // 如果不在approved_start_list中，则添加到approved_start_list中
+            if !self.approved_start_list.contains(&irc_name.to_string()) {
+                self.approved_start_list.push(irc_name.to_string());
+            }
+        }
+        // 判断列表是否满足人数的一半
+        if self.approved_start_list.len() >= (self.player_list.len() as f64 / 2.0).ceil() as usize {
+            self.start_game().await?;
+            self.approved_start_list.clear();
+        }
+        else {
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("{} / {} in the start process", self.approved_start_list.len(), (self.player_list.len() as f64 / 2.0).ceil() as usize)).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn save_room_id_to_file(&self) -> Result<(), Box<dyn Error>> {
+        let room_id = *self.room_id.lock().await;
+        let mut file = File::create("last_room_id.txt")?;
+        write!(file, "{}", room_id)?;
+        println!("Room ID {} saved to last_room_id.txt", room_id);
+        Ok(())
+    }
 }

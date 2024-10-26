@@ -31,6 +31,9 @@ pub async fn handle_event(bot: &mut MyBot, target: &str, msg: &str) -> Result<()
         (_, m) if m.contains("left the game") => {
             handle_player_leave(bot, m).await?;
         }
+        (_, m) if m.starts_with("Slot") => {
+            handle_slot(bot, m).await?;
+        }
         _ => {}
     }
     Ok(())
@@ -40,8 +43,10 @@ async fn handle_create_room(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Er
     parse_room_id(bot, msg).await?;
     bot.join_channel(&format!("#mp_{}", *bot.room_id.lock().await)).await?;
     bot.set_room_password(bot.room_password.clone()).await?;
+    bot.save_room_id_to_file().await?;
     Ok(())
 }
+
 
 async fn parse_room_id(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
     let re = Regex::new(r"https://osu\.ppy\.sh/mp/(\d+)")?;
@@ -68,9 +73,9 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             // 获取谱面信息
             let beatmap = bot.osu_api.get_beatmap_info(bot.beatmap_id).await?;
 
-            let beatmap_info = beatmap.get_formatted_info();
+            bot.beatmap_length = beatmap.total_length;
 
-            bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &beatmap_info).await?;
+            bot.beatmap_info = beatmap.get_formatted_info();
             
             // 下载谱面
             bot.osu_api.download_beatmap(bot.beatmap_id).await?;
@@ -92,12 +97,28 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             let mods = 0;
             let (stars, max_pp, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc) = bot.pp_calculator.calculate_beatmap_details(mods)?;
 
-            let pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 96%: {:.2}pp | 97%: {:.2}pp | 98%: {:.2}pp | 99%: {:.2}pp | Max: {:.2}pp", 
+            let beatmap_pp_info = format!("Stars: {:.2} | 95%: {:.2}pp | 96%: {:.2}pp | 97%: {:.2}pp | 98%: {:.2}pp | 99%: {:.2}pp | Max: {:.2}pp", 
                                   stars, pp_95_fc, pp_96_fc, pp_97_fc, pp_98_fc, pp_99_fc, max_pp);
 
-            bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &pp_info).await?;
+            bot.beatmap_pp_info = beatmap_pp_info;
+
+            bot.send_beatmap_info().await?;
         }
     }
+    Ok(())
+}
+
+async fn handle_slot(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
+    let re = Regex::new(r"Slot \d+\s+(?:Not Ready|Ready)\s+https://osu\.ppy\.sh/u/\d+\s+(.+?)(?:\s+\[Host\])?$")?;
+
+    if let Some(captures) = re.captures(msg) {
+        if let Some(player_name) = captures.get(1) {
+            let player_name = player_name.as_str().trim().to_string();
+            bot.add_player(player_name.clone());
+            println!("Added player from slot: {}", player_name);
+        }
+    }
+    
     Ok(())
 }
 
@@ -136,7 +157,7 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
 
 fn is_fully_played(bot: &MyBot) -> bool {
     let played_len = bot.beatmap_end_time.unwrap().duration_since(bot.beatmap_start_time.unwrap()).as_secs();
-    println!("Played length: {}s ? 1/2beatmap_length: {}", played_len, bot.beatmap_length / 2);
+    println!("Played length: {}s ? {}s 1/2beatmap_length", played_len, bot.beatmap_length / 2);
     played_len >= bot.beatmap_length / 2
 }
 
@@ -152,6 +173,8 @@ async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Er
                 // 如果之前为空，将当前玩家设为主机
                 bot.set_host(&player_name).await?;
                 println!("Set {} as host (first player)", player_name);
+                bot.set_free_mod().await?;
+                println!("Set FreeMod");
             }
             println!("Player list: {:?}", bot.player_list);
         }
@@ -170,3 +193,5 @@ async fn handle_player_leave(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn E
     }
     Ok(())
 }
+
+
