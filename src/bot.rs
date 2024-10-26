@@ -38,6 +38,9 @@ pub struct MyBot {
     pub pp_calculator: PPCalculator,
     pub osu_api: OsuApi,
     pub player_info: HashMap<String, User>,
+    pub beatmap_title_unicode: String,
+    pub beatmap_artist_unicode: String,
+    pub beatmap_difficulty_rating: f32,
     pub beatmap_info: String,
     pub beatmap_pp_info: String,
 }
@@ -68,6 +71,9 @@ impl MyBot {
             pp_calculator: PPCalculator::new(String::new()),
             osu_api: OsuApi::new(client_id, client_secret),
             player_info: HashMap::new(),
+            beatmap_title_unicode: String::new(),
+            beatmap_artist_unicode: String::new(),
+            beatmap_difficulty_rating: 0.0,
             beatmap_info: String::new(),
             beatmap_pp_info: String::new(),
         };

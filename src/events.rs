@@ -73,9 +73,15 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
             // 获取谱面信息
             let beatmap = bot.osu_api.get_beatmap_info(bot.beatmap_id).await?;
 
+            // 写入一些数据
             bot.beatmap_length = beatmap.total_length;
+            bot.beatmap_difficulty_rating = beatmap.difficulty_rating;
+            bot.beatmap_title_unicode = beatmap.beatmapset.title_unicode.clone();
+            bot.beatmap_artist_unicode = beatmap.beatmapset.artist_unicode.clone();
 
             bot.beatmap_info = beatmap.get_formatted_info();
+            
+            bot.send_beatmap_info().await?;
             
             // 下载谱面
             bot.osu_api.download_beatmap(bot.beatmap_id).await?;
@@ -102,14 +108,14 @@ async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn
 
             bot.beatmap_pp_info = beatmap_pp_info;
 
-            bot.send_beatmap_info().await?;
+            bot.send_message(&format!("#mp_{}", *bot.room_id.lock().await), &bot.beatmap_pp_info).await?;
         }
     }
     Ok(())
 }
 
 async fn handle_slot(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
-    let re = Regex::new(r"Slot \d+\s+(?:Not Ready|Ready)\s+https://osu\.ppy\.sh/u/\d+\s+(.+?)(?:\s+\[Host\])?$")?;
+    let re = Regex::new(r"Slot \d+\s+(?:Not Ready|Ready)\s+https://osu\.ppy\.sh/u/\d+\s+(.+?)(?:\s+\[.+?\])?$")?;
 
     if let Some(captures) = re.captures(msg) {
         if let Some(player_name) = captures.get(1) {
@@ -193,5 +199,6 @@ async fn handle_player_leave(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn E
     }
     Ok(())
 }
+
 
 

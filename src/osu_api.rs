@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use serde_json;
 
 pub struct OsuApi {
     client: Client,
@@ -53,6 +54,23 @@ pub struct Beatmap {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct BeatmapForRecentScore {
+    pub id: u32,
+    pub beatmapset_id: u32,
+    pub status: String,
+    pub total_length: u64,
+    pub version: String,
+    pub difficulty_rating: f32,
+    pub accuracy: f32,
+    pub ar: f32,
+    pub bpm: f32,
+    pub cs: f32,
+    pub drain: f32,
+    pub mode_int: u32,
+    pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Beatmapset {
     pub artist: String,
     pub title: String,
@@ -60,6 +78,14 @@ pub struct Beatmapset {
     pub artist_unicode: String,
     pub submitted_date: String,
     pub ranked_date: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct BeatmapsetForRecentScore {
+    pub artist: String,
+    pub title: String,
+    pub title_unicode: String,
+    pub artist_unicode: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -79,7 +105,7 @@ pub struct Score {
     pub mods: Vec<String>,
     pub passed: bool,
     pub perfect: bool,
-    pub pp: f32,
+    pub pp: Option<f32>,
     pub rank: String,
     pub replay: bool,
     pub score: u64,
@@ -94,6 +120,27 @@ pub struct ScoreStatistics {
     pub count_geki: Option<u32>,
     pub count_katu: Option<u32>,
     pub count_miss: u32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RecentScoreResponse {
+    pub accuracy: f64,
+    pub best_id: Option<u64>,
+    pub created_at: String,
+    pub id: u64,
+    pub max_combo: u32,
+    pub mode: String,
+    pub mode_int: u8,
+    pub mods: Vec<String>,
+    pub passed: bool,
+    pub perfect: bool,
+    pub pp: Option<f32>,
+    pub rank: String,
+    pub replay: bool,
+    pub score: u64,
+    pub statistics: ScoreStatistics,
+    pub beatmap: BeatmapForRecentScore,
+    pub beatmapset: BeatmapsetForRecentScore,
 }
 
 impl User {
@@ -132,6 +179,32 @@ impl Beatmap {
             self.beatmapset.title_unicode, self.beatmapset.artist_unicode, self.bpm, length_seconds,
             self.ar, self.cs, self.accuracy, self.drain, sayo_url, inso_url
         )
+    }
+}
+
+impl Score {
+    pub fn format_url(&self,beatmap_id: u32) -> String {
+        format!("https://osu.ppy.sh/b/{}", beatmap_id)
+    }
+
+    pub fn format_date(&self) -> String {
+        DateTime::parse_from_rfc3339(&self.created_at)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc).format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown Date".to_string())
+    }
+}
+
+impl RecentScoreResponse {
+    pub fn format_date(&self) -> String {
+        DateTime::parse_from_rfc3339(&self.created_at)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc).format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown Date".to_string())
+    }
+
+    pub fn format_url(&self) -> String {
+        format!("https://osu.ppy.sh/b/{}", self.beatmap.id)
     }
 }
 
@@ -178,7 +251,7 @@ impl OsuApi {
             let userdata: UserData = res.json().await?;
             Ok(userdata)
         } else {
-            Err(format!("Failed to get user info: {:?}", res.status()).into())
+            Err(format!("获取用户信息时错误: {:?}", res.status()).into())
         }
     }
 
@@ -196,7 +269,7 @@ impl OsuApi {
             let beatmap: Beatmap = res.json().await?;
             Ok(beatmap)
         } else {
-            Err(format!("Failed to get beatmap: {:?}", res.status()).into())
+            Err(format!("获取谱面时错误: {:?}", res.status()).into())
         }
     }
 
@@ -206,7 +279,7 @@ impl OsuApi {
         let file_path = format!("./maps/{}.osu", beatmap_id);
         let path = Path::new(&file_path);
         if path.exists() {
-            println!("Beatmap already exists: {}", file_path);
+            println!("谱面已存在: {}", file_path);
             return Ok(());
         }
 
@@ -228,10 +301,10 @@ impl OsuApi {
 
             let mut file = File::create(path)?;
             file.write_all(&bytes)?;
-            println!("Beatmap downloaded and saved to: {}", file_path);
+            println!("谱面下载并保存到: {}", file_path);
             Ok(())
         } else {
-            Err(format!("Failed to download beatmap: {:?}", res.status()).into())
+            Err(format!("下载谱面时错误: {:?}", res.status()).into())
         }
     }
 
@@ -249,8 +322,31 @@ impl OsuApi {
             let user_score: UserScore = res.json().await?;
             Ok(user_score)
         } else {
-            Err(format!("Failed to get user score: {:?}", res.status()).into())
+            Err(format!("获取成绩时错误: {:?}", res.status()).into())
         }
     }
+
+    pub async fn get_user_recent_score(&mut self, user_id: u32, include_fails: bool) -> Result<Option<RecentScoreResponse>, Box<dyn Error>> {
+        self.get_token().await?;
+
+        let url = format!(
+            "https://osu.ppy.sh/api/v2/users/{}/scores/recent?include_fails={}&limit=1",
+            user_id,
+            if include_fails { "1" } else { "0" }
+        );
+        let res = self.client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token.as_ref().unwrap()))
+            .send()
+            .await?;
+
+        if res.status().is_success() {
+            let scores: Vec<RecentScoreResponse> = res.json().await?;
+            Ok(scores.into_iter().next())
+        } else {
+            Err(format!("获取成绩时错误: {:?}", res.status()).into())
+        }
+    }
+
     // Add more API methods as needed
 }
