@@ -8,7 +8,6 @@ pub fn get_config() -> Result<Config, Box<dyn std::error::Error>> {
         nickname: Some("ATRI1024".to_owned()),
         server: Some("irc.ppy.sh".to_owned()),
         port: Some(6667),
-        channels: vec!["#welcome".to_owned()],
         password: Some(password),
         use_tls: Some(false),
         ..Config::default()

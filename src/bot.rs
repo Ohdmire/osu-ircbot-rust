@@ -1,7 +1,8 @@
 use crate::pp_calculator;
-use crate::osu_api;
+use crate::osu_api::{self, User};
 
 use irc::client::prelude::*;
+use irc::proto::response;
 use std::error::Error;
 use futures::stream::StreamExt;
 use std::time::{Instant, Duration};
@@ -15,7 +16,6 @@ use tokio::sync::Mutex as TokioMutex;
 use crate::events::handle_event;
 use std::env;
 use std::collections::HashMap;
-use crate::osu_api::User;
 use std::fs::File;
 use std::io::{Write, Read};
 
@@ -44,6 +44,7 @@ pub struct MyBot {
     pub beatmap_difficulty_rating: f32,
     pub beatmap_info: String,
     pub beatmap_pp_info: String,
+    pub is_channel_exist: bool,
 }
 
 impl MyBot {
@@ -68,6 +69,7 @@ impl MyBot {
             room_name: env::var("ROOM_NAME").unwrap_or_else(|_| "".to_string()),
             room_password: env::var("ROOM_PASSWORD").unwrap_or_else(|_| "".to_string()),
             beatmap_id: 0,
+            is_channel_exist: false,
             beatmap_length: 0,
             beatmap_path: String::new(),
             pp_calculator: PPCalculator::new(String::new()),
@@ -98,7 +100,11 @@ impl MyBot {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        
+
         self.client.identify()?;
+
+        let mut stream = self.client.stream()?;
 
         let room_id = *self.room_id.lock().await;
         if room_id == 0 {
@@ -108,27 +114,13 @@ impl MyBot {
             println!("Using existing room: #mp_{}", room_id);
             // 尝试加入上次的房间
             self.join_last_room().await?;
-            self.get_mp_settings().await?;
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp settings").await?;
         }
-
-        let mut stream = self.client.stream()?;
-
-        // Start the periodic task
-        // let room_id = Arc::clone(&self.room_id);
-        // tokio::spawn(async move {
-        //     let mut interval = interval(Duration::from_secs(60));
-        //     loop {
-        //         interval.tick().await;
-        //         let current_room_id = *room_id.lock().await;
-        //         if let Err(e) = Self::check_room_status(current_room_id).await {
-        //             eprintln!("检查房间状态失败: {}", e);
-        //         }
-        //     }
-        // });
 
         while let Some(message) = stream.next().await.transpose()? {
             self.handle_message(message).await.expect("Error handling message");
         }
+
 
         Ok(())
     }
@@ -137,6 +129,9 @@ impl MyBot {
         match &message.command {
             Command::PRIVMSG(target, msg) => {
                 println!("收到消息: {} <- {}", target, msg);
+                if msg.contains("Match settings") {
+                    self.is_channel_exist = true;
+                }
                 if msg.starts_with("!") {
                     let prefix = self.get_nickname(&message.prefix);
                     handle_command(self, target, msg, prefix).await?;
@@ -159,6 +154,14 @@ impl MyBot {
                     }
                 }
             }
+            
+            Command::Response(Response::ERR_NOSUCHCHANNEL,args) => {
+                self.is_channel_exist = false;          
+                println!("{:?},{:?}",Response::ERR_NOSUCHCHANNEL,args);       
+                println!("Not found channel, Recreate");
+                self.create_room().await?;
+            }
+
             _ => {}
         }
         Ok(())
@@ -228,13 +231,6 @@ impl MyBot {
     pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_message("BanchoBot", "!mp make ATRI高性能mp房测试ver.").await?;
         println!("Sent room creation request to BanchoBot");
-        
-        // 等待一段时间,确保房间ID已经被设置
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        
-        // 保存房间ID到文件
-        self.save_room_id_to_file().await?;
-        
         Ok(())
     }
 
