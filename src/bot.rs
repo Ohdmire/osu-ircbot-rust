@@ -200,13 +200,16 @@ impl MyBot {
     }
 
     pub async fn rotate_host(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(new_host) = self.room_host_list.pop() {
-            self.room_host_list.insert(0, new_host.clone());
+        if !self.room_host_list.is_empty() {
+            let old_host = self.room_host_list.remove(0);
+            self.room_host_list.push(old_host);
+            let new_host = self.room_host_list[0].clone();
             self.set_host(&new_host).await?;
             println!("Rotated host to: {}", new_host);
         }
         Ok(())
     }
+
 
     fn get_nickname(&self, prefix: &Option<Prefix>) -> Option<String> {
         prefix.as_ref().and_then(|p| {
@@ -326,7 +329,7 @@ impl MyBot {
     }
 
     pub async fn send_queue(&mut self) -> Result<(), Box<dyn Error>> {
-        let queue = self.player_list.iter()
+        let queue = self.room_host_list.iter()
             .map(|name| {
                 name.chars()
                 .map(|c| format!("{c}\u{200B}"))

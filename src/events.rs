@@ -157,6 +157,8 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     bot.beatmap_end_time = Some(std::time::Instant::now());
     bot.is_game_started = false;
     println!("Match aborted");
+    // 比赛丢弃时时，删除不在player_list中的玩家
+    bot.remove_player_not_in_list();
     if is_fully_played(bot) {
         bot.rotate_host().await?;
     }
