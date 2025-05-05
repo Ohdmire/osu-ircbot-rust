@@ -3,11 +3,11 @@ name: Rust Cross-Platform Build on Tag
 on:
   push:
     tags:
-      - 'v*'  # 匹配以 'v' 开头的标签，例如 v1.0.0
+      - 'v*'  # Match tags starting with 'v', e.g. v1.0.0
 
 env:
   CARGO_TERM_COLOR: always
-  BINARY_NAME: "irc-bot"  # 定义二进制名称变量
+  BINARY_NAME: "irc-bot"
 
 jobs:
   build-windows:
@@ -34,7 +34,7 @@ jobs:
         Move-Item -Path $exePath -Destination $newExePath
 
     - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows-bin
         path: ${{ env.BINARY_NAME }}-windows-${{ github.ref_name }}.exe
@@ -60,7 +60,7 @@ jobs:
         mv "target/release/$BINARY_NAME" "$BINARY_NAME-linux-${{ github.ref_name }}"
 
     - name: Upload Linux Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: linux-bin
         path: ${{ env.BINARY_NAME }}-linux-${{ github.ref_name }}
@@ -73,12 +73,12 @@ jobs:
 
     steps:
     - name: Download Windows Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: windows-bin
 
     - name: Download Linux Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: linux-bin
 
