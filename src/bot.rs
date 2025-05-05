@@ -169,6 +169,8 @@ impl MyBot {
                     println!("{} left {}", nick, channel);
                     if nick == self.bot_name {
                         println!("Bot was kicked from the channel");
+                        // 清空队列
+                        self.player_list.clear();
                         self.save_latest_info_to_file().expect("无法写入bot state");
                         // 退出终止进程
                         !panic!("End.")
