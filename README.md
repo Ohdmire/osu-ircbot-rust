@@ -23,7 +23,7 @@ help(!h) 查看帮助 |
 ## 运行
 
 1. 到`Release`页面下载最新版本
-2. 确保创建了.env文件（格式在下文）
+2. 确保创建了`.env`文件（格式在下文）
 3. 双击运行即可
 
 ## 自行编译
@@ -42,7 +42,7 @@ help(!h) 查看帮助 |
    ROOM_PASSWORD=123
    ```
 4. 运行 `cargo build --release` 来构建项目。
-5. 运行 `target/release/osu-ircbot-rust` 来启动机器人。
+5. 运行 `target/release/irc_bot` 来启动机器人。
 
 ## License
 
