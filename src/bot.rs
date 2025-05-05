@@ -160,7 +160,6 @@ impl MyBot {
             }
             Command::JOIN(channel, _, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
-                    self.save_latest_info_to_file().expect("无法写入bot state");
                     println!("{} joined {}", nick, channel);
                 }
             }

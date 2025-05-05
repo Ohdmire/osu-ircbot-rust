@@ -177,6 +177,7 @@ async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Er
             let player_name = name.as_str().to_string();
             bot.add_player(player_name.clone());
             bot.send_welcome(player_name.clone()).await?;
+            bot.save_latest_info_to_file().expect("无法写入bot state");
             println!("Player joined: {}", player_name);
             // 检查玩家是不是房间里面的第一个加入的
             if bot.player_list.len() == 1 {
@@ -197,6 +198,7 @@ async fn handle_player_leave(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn E
     if let Some(captures) = re.captures(msg) {
         if let Some(name) = captures.get(1) {
             bot.remove_player(name.as_str());
+            bot.save_latest_info_to_file().expect("无法写入bot state");
             println!("Player left: {}", name.as_str());
             println!("Player list: {:?}", bot.player_list);
         }
