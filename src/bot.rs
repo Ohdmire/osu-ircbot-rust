@@ -1,26 +1,37 @@
-use crate::pp_calculator;
+use crate::{pp_calculator, BotSettings};
 use crate::osu_api::{self, User};
 
 use irc::client::prelude::*;
-use irc::proto::response;
+
 use std::error::Error;
 use futures::stream::StreamExt;
 use std::time::{Instant, Duration};
 use crate::commands::handle_command;
-use regex::Regex;
-use tokio::time::interval;
+
 use self::pp_calculator::PPCalculator;
 use self::osu_api::OsuApi;
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use crate::events::handle_event;
-use std::env;
+
 use std::collections::HashMap;
+
 use std::fs::File;
 use std::io::{Write, Read};
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct BotState {
+    beatmap_name: String,
+    beatmap_artist: String,
+    beatmap_star: f32,
+    player_list: Vec<String>,
+}
+
 pub struct MyBot {
     client: Client,
+    pub bot_name: String,
     pub player_list: Vec<String>,
     pub room_host_list: Vec<String>,
     pub beatmap_start_time: Option<Instant>,
@@ -45,10 +56,12 @@ pub struct MyBot {
     pub beatmap_info: String,
     pub beatmap_pp_info: String,
     pub is_channel_exist: bool,
+    pub is_game_started: bool,
 }
 
 impl MyBot {
-    pub async fn new(config: Config, client_id: String, client_secret: String) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(config: Config, client_id: String, client_secret: String,bot_settings: BotSettings) -> Result<Self, Box<dyn Error>> {
+        let nickname = config.nickname.clone();
         let client = Client::from_config(config).await?;
         
         // 尝试读取上次保存的房间ID
@@ -56,6 +69,7 @@ impl MyBot {
         
         let bot = MyBot {
             client,
+            bot_name: nickname.unwrap(),
             player_list: Vec::new(),
             room_host_list: Vec::new(),
             beatmap_start_time: None,
@@ -66,10 +80,11 @@ impl MyBot {
             approved_close_list: Vec::new(),
             room_host: String::new(),
             room_id: Arc::new(TokioMutex::new(last_room_id)),
-            room_name: env::var("ROOM_NAME").unwrap_or_else(|_| "".to_string()),
-            room_password: env::var("ROOM_PASSWORD").unwrap_or_else(|_| "".to_string()),
+            room_name: bot_settings.room_name,
+            room_password: bot_settings.room_password,
             beatmap_id: 0,
             is_channel_exist: false,
+            is_game_started:false,
             beatmap_length: 0,
             beatmap_path: String::new(),
             pp_calculator: PPCalculator::new(String::new()),
@@ -128,11 +143,15 @@ impl MyBot {
     async fn handle_message(&mut self, message: Message) -> Result<(), Box<dyn Error>> {
         match &message.command {
             Command::PRIVMSG(target, msg) => {
-                println!("收到消息: {} <- {}", target, msg);
+                let sender = self.get_nickname(&message.prefix).unwrap_or("unknown".to_string());
+                println!("收到消息: {} <- {} from {}", target, msg,sender);
                 if msg.contains("Match settings") {
                     self.is_channel_exist = true;
                 }
-                if msg.starts_with("!") {
+                if msg.starts_with("help"){
+                    self.send_menu().await?;
+                }
+                if msg.starts_with("!") || msg.starts_with("！") {
                     let prefix = self.get_nickname(&message.prefix);
                     handle_command(self, target, msg, prefix).await?;
                 } else {
@@ -141,16 +160,17 @@ impl MyBot {
             }
             Command::JOIN(channel, _, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
+                    self.save_latest_info_to_file().expect("无法写入bot state");
                     println!("{} joined {}", nick, channel);
                 }
             }
             Command::PART(channel, _) => {
                 if let Some(nick) = self.get_nickname(&message.prefix) {
-                    if nick == "ATRI1024" {
-                        // 延迟10秒后重新创建mp房间
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                        self.create_room().await?;
-                        println!("{} left {}", nick, channel);
+                    println!("{} left {}", nick, channel);
+                    if nick == self.bot_name {
+                        println!("Bot was kicked from the channel");
+                        // 退出终止进程
+                        !panic!("End.")
                     }
                 }
             }
@@ -175,13 +195,6 @@ impl MyBot {
 
     pub async fn join_channel(&self, channel: &str) -> Result<(), irc::error::Error> {
         self.client.send_join(channel)
-    }
-
-    async fn check_room_status(room_id: u32) -> Result<(), Box<dyn Error>> {
-        println!("Checking status of room: {}", room_id);
-        // 这里你通常会使用 osu! API 检查房间状态
-        // 现在我们只是打印一条消息
-        Ok(())
     }
 
     pub async fn rotate_host(&mut self) -> Result<(), Box<dyn Error>> {
@@ -229,7 +242,7 @@ impl MyBot {
     }
 
     pub async fn create_room(&mut self) -> Result<(), Box<dyn Error>> {
-        self.send_message("BanchoBot", "!mp make ATRI高性能mp房测试ver.").await?;
+        self.send_message("BanchoBot", &format!("!mp make {}", self.room_name)).await?;
         println!("Sent room creation request to BanchoBot");
         Ok(())
     }
@@ -245,20 +258,45 @@ impl MyBot {
         Ok(())
     }
 
-    pub async fn calculate_total_time_left(&self) -> Result<(), Box<dyn Error>> {
+    pub async fn calculate_total_time_left(&self) -> Result<(String), Box<dyn Error>> {
         let now = Instant::now();
         let elapsed = now.duration_since(self.beatmap_start_time.unwrap_or(now));
         if elapsed == Duration::from_secs(0) {
-            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "游戏尚未开始").await?;
-            return Ok(());
+            let msg_not_started = "游戏尚未开始".to_string();
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &msg_not_started).await?;
+            Ok(msg_not_started)
         }
         else {
             let total_time_left = self.beatmap_length - elapsed.as_secs();
-            self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("剩余游玩时间: {}s", total_time_left)).await?;
+            let msg_started = format!("剩余游玩时间: {}s", total_time_left);
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await),&msg_started).await?;
+            Ok(msg_started)
         }
-        Ok(())
     }
 
+    pub async fn send_welcome(&mut self, player_name: String) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await),&format!("欢迎{}酱~＼(≧▽≦)／ 输入help获取指令详情", player_name)).await?;
+
+        if self.is_game_started{
+            let remain_time_text = self.calculate_total_time_left().await?;
+            self.send_message(&format!("#mp_{}", *self.room_id.lock().await),&remain_time_text).await?;
+        }
+
+        Ok(())
+    }
+    
+    pub async fn send_menu(&mut self) -> Result<(), Box<dyn Error>> {
+        let help_text = "!queue(!q) 查看队列 | !abort 投票丢弃游戏 | !start 投票开始游戏 | !skip 投票跳过房主 | !pr(!p) 查询最近pass成绩 | !re(!r) 查询最近成绩 | !s 查询当前谱面最好成绩| !info(!i) 返回当前谱面信息| !ttl 查询剩余时间 | help(!h) 查看帮助 | !about 关于机器人";
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await),help_text).await?;
+        Ok(())
+    }
+    
+    pub async fn send_about(&mut self) -> Result<(), Box<dyn Error>> {
+        let about_text = "https://github.com/Ohdmire/osu-ircbot-rust ATRI高性能bot with Rust";
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await),about_text).await?;
+        Ok(())
+    }
+    
     pub async fn set_host(&mut self, player_name: &str) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp host {}", player_name)).await?;
         self.room_host = player_name.to_string();
@@ -287,9 +325,15 @@ impl MyBot {
 
     pub async fn send_queue(&mut self) -> Result<(), Box<dyn Error>> {
         let queue = self.player_list.iter()
-            .map(|name| format!("\u{200B}{}", name))
-            .collect::<Vec<String>>()
-            .join("->");
+            .map(|name| {
+                name.chars()
+                .map(|c| format!("{c}\u{200B}"))
+                .collect::<String>()
+                .trim_end_matches('\u{200B}')
+                .to_owned()
+            })
+                .collect::<Vec<_>>()
+                .join("->");
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &queue).await?;
         Ok(())
     }
@@ -305,6 +349,7 @@ impl MyBot {
 
     pub async fn send_beatmap_info(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &self.beatmap_info).await?;
+        self.save_latest_info_to_file().expect("无法写入bot state");
         Ok(())
     }
 
@@ -368,6 +413,18 @@ impl MyBot {
         let mut file = File::create("last_room_id.txt")?;
         write!(file, "{}", room_id)?;
         println!("Room ID {} saved to last_room_id.txt", room_id);
+        Ok(())
+    }
+
+    pub fn save_latest_info_to_file(&self) -> Result<(), Box<dyn Error>> {
+        let state = BotState{
+            beatmap_name: self.beatmap_title_unicode.clone(),
+            beatmap_artist: self.beatmap_artist_unicode.clone(),
+            beatmap_star: self.beatmap_difficulty_rating,
+            player_list: self.player_list.clone()
+        };
+        let mut file = File::create("bot_state.json")?;
+        serde_json::to_writer_pretty(&file, &state)?;
         Ok(())
     }
 }

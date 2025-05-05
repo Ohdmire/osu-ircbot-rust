@@ -3,3 +3,4 @@
 .idea
 /maps
 last_room_id.txt
+bot_state.json

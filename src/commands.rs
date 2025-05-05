@@ -2,9 +2,10 @@ use crate::{bot::MyBot, osu_api::UserScore, osu_api::RecentScoreResponse};
 use std::error::Error;
 
 pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
-    let command = msg.split_whitespace().next().unwrap_or("");
+    let mut command = msg.split_whitespace().next().unwrap_or("").to_lowercase();
+    command = command.replace("！", "!");
     let irc_name = prefix.unwrap_or_default();
-    match command {
+    match command.as_str() {
         "!hello" => {
             let response = format!("Hello, {}!", &irc_name);
             bot.send_message(target, &response).await?;
@@ -30,16 +31,16 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
         "!ttl" => {
             bot.calculate_total_time_left().await?;
         }
-        "!help" => {
-            
+        "!help" | "!h" => {
+            bot.send_menu().await?;
         }
-        "!pp" => {
-            
+        "!about" => {
+            bot.send_about().await?;
         }
-        "!pr" => {
+        "!pr" | "!p" => {
             handle_recent_score(bot, target, &irc_name, false).await?;
         }
-        "!re" => {
+        "!re" | "!r" => {
             handle_recent_score(bot, target, &irc_name, true).await?;
         }
         "!s" => {

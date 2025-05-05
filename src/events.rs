@@ -135,12 +135,14 @@ async fn handle_match_ready(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
 
 async fn handle_match_start(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     bot.beatmap_start_time = Some(std::time::Instant::now());
+    bot.is_game_started = true;
     println!("Match started");
     Ok(())
 }
 
 async fn handle_match_finish(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     bot.beatmap_end_time = Some(std::time::Instant::now());
+    bot.is_game_started = false;
     println!("Match finished");
     // 比赛结束时，删除不在player_list中的玩家
     bot.remove_player_not_in_list();
@@ -153,6 +155,7 @@ async fn handle_match_finish(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
 
 async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     bot.beatmap_end_time = Some(std::time::Instant::now());
+    bot.is_game_started = false;
     println!("Match aborted");
     if is_fully_played(bot) {
         bot.rotate_host().await?;
@@ -162,7 +165,7 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
 }
 
 fn is_fully_played(bot: &MyBot) -> bool {
-    let played_len = bot.beatmap_end_time.unwrap().duration_since(bot.beatmap_start_time.unwrap()).as_secs();
+    let played_len = bot.beatmap_end_time.unwrap_or_else(|| std::time::Instant::now()).duration_since(bot.beatmap_start_time.unwrap_or_else(|| std::time::Instant::now())).as_secs();
     println!("Played length: {}s ? {}s 1/2beatmap_length", played_len, bot.beatmap_length / 2);
     played_len >= bot.beatmap_length / 2
 }
@@ -173,6 +176,7 @@ async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Er
         if let Some(name) = captures.get(1) {
             let player_name = name.as_str().to_string();
             bot.add_player(player_name.clone());
+            bot.send_welcome(player_name.clone()).await?;
             println!("Player joined: {}", player_name);
             // 检查玩家是不是房间里面的第一个加入的
             if bot.player_list.len() == 1 {
