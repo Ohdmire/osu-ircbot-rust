@@ -169,6 +169,7 @@ impl MyBot {
                     println!("{} left {}", nick, channel);
                     if nick == self.bot_name {
                         println!("Bot was kicked from the channel");
+                        self.save_latest_info_to_file().expect("无法写入bot state");
                         // 退出终止进程
                         !panic!("End.")
                     }
@@ -284,19 +285,19 @@ impl MyBot {
 
         Ok(())
     }
-    
+
     pub async fn send_menu(&mut self) -> Result<(), Box<dyn Error>> {
         let help_text = "!queue(!q) 查看队列 | !abort 投票丢弃游戏 | !start 投票开始游戏 | !skip 投票跳过房主 | !pr(!p) 查询最近pass成绩 | !re(!r) 查询最近成绩 | !s 查询当前谱面最好成绩| !info(!i) 返回当前谱面信息| !ttl 查询剩余时间 | help(!h) 查看帮助 | !about 关于机器人";
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await),help_text).await?;
         Ok(())
     }
-    
+
     pub async fn send_about(&mut self) -> Result<(), Box<dyn Error>> {
         let about_text = "https://github.com/Ohdmire/osu-ircbot-rust ATRI高性能bot with Rust";
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await),about_text).await?;
         Ok(())
     }
-    
+
     pub async fn set_host(&mut self, player_name: &str) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp host {}", player_name)).await?;
         self.room_host = player_name.to_string();
