@@ -1,0 +1,90 @@
+name: Rust Cross-Platform Build on Tag
+
+on:
+  push:
+    tags:
+      - 'v*'  # 匹配以 'v' 开头的标签，例如 v1.0.0
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: "irc-bot"  # 定义二进制名称变量
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust (Nightly)
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+
+    - name: Build for Windows
+      run: cargo build --release
+
+    - name: Rename Windows executable
+      shell: pwsh
+      run: |
+        $exePath = "target/release/$env:BINARY_NAME.exe"
+        $newExePath = "$env:BINARY_NAME-windows-${{ github.ref_name }}.exe"
+        Move-Item -Path $exePath -Destination $newExePath
+
+    - name: Upload Windows Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-bin
+        path: ${{ env.BINARY_NAME }}-windows-${{ github.ref_name }}.exe
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust (Nightly)
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+
+    - name: Build for Linux
+      run: cargo build --release
+
+    - name: Rename Linux binary
+      run: |
+        mv "target/release/$BINARY_NAME" "$BINARY_NAME-linux-${{ github.ref_name }}"
+
+    - name: Upload Linux Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: linux-bin
+        path: ${{ env.BINARY_NAME }}-linux-${{ github.ref_name }}
+
+  release:
+    name: Create Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: windows-bin
+
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: linux-bin
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          ${{ env.BINARY_NAME }}-windows-${{ github.ref_name }}.exe
+          ${{ env.BINARY_NAME }}-linux-${{ github.ref_name }}
