@@ -149,6 +149,10 @@ async fn handle_match_finish(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     if is_fully_played(bot) {
         bot.rotate_host().await?;
     }
+     // 这里实现参考下文的房主退出逻辑的补足
+    if !bot.player_list.contains(&bot.room_host) {
+        bot.rotate_host().await?
+    }
     bot.send_queue().await?;
     Ok(())
 }
@@ -161,6 +165,10 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     bot.remove_player_not_in_list();
     if is_fully_played(bot) {
         bot.rotate_host().await?;
+    }
+    // 这里实现参考下文的房主退出逻辑的补足
+    if !bot.player_list.contains(&bot.room_host) {
+        bot.rotate_host().await?
     }
     bot.send_queue().await?;
     Ok(())
@@ -202,7 +210,10 @@ async fn handle_player_leave(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn E
         if let Some(name) = captures.get(1) {
             bot.remove_player(name.as_str());
             // 判断是否是房主离开 是的话要rotate
-            if name.as_str() == bot.room_host{
+            // 还需充分考虑match状态 前文的finish和abort状态如果触发了 可能会导致两次rotate
+            // ok还需要考虑如果start以后没玩完abort了然后再保持原房主 但是此时无法进一步rotate所以这一部分如果考虑会导致超级冲突
+            // 转而考虑abort部分
+            if name.as_str() == bot.room_host || bot.is_game_started == false{
                 bot.rotate_host().await?;
             }
             bot.save_latest_info_to_file().expect("无法写入bot state");
