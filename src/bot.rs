@@ -133,7 +133,12 @@ impl MyBot {
         }
 
         while let Some(message) = stream.next().await.transpose()? {
-            self.handle_message(message).await.expect("Error handling message");
+            match self.handle_message(message).await {
+                Ok(_) => {},
+                Err(e) => {
+                    println!("Error handling message: {:?}", e);
+                }
+            }
         }
 
 

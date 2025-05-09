@@ -190,6 +190,7 @@ async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Er
                 println!("Set FreeMod");
             }
             println!("Player list: {:?}", bot.player_list);
+            println!("Host list {:?}", bot.room_host_list);
         }
     }
     Ok(())
@@ -200,9 +201,14 @@ async fn handle_player_leave(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn E
     if let Some(captures) = re.captures(msg) {
         if let Some(name) = captures.get(1) {
             bot.remove_player(name.as_str());
+            // 判断是否是房主离开 是的话要rotate
+            if name.as_str() == bot.room_host{
+                bot.rotate_host().await?;
+            }
             bot.save_latest_info_to_file().expect("无法写入bot state");
             println!("Player left: {}", name.as_str());
             println!("Player list: {:?}", bot.player_list);
+            println!("Host list {:?}", bot.room_host_list);
         }
     }
     Ok(())
