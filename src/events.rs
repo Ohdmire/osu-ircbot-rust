@@ -176,8 +176,15 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
 
 fn is_fully_played(bot: &MyBot) -> bool {
     let played_len = bot.beatmap_end_time.unwrap_or_else(|| std::time::Instant::now()).duration_since(bot.beatmap_start_time.unwrap_or_else(|| std::time::Instant::now())).as_secs();
-    println!("Played length: {}s ? {}s 1/2beatmap_length", played_len, bot.beatmap_length / 2);
-    played_len >= bot.beatmap_length / 2
+    
+    let half_length = bot.beatmap_length / 2;
+
+    match played_len.cmp(&half_length) {
+        std::cmp::Ordering::Greater => println!("Played length: {}s > {}s (1/2 beatmap_length)", played_len, half_length),
+        std::cmp::Ordering::Less => println!("Played length: {}s < {}s (1/2 beatmap_length)", played_len, half_length),
+        std::cmp::Ordering::Equal => println!("Played length: {}s == {}s (1/2 beatmap_length)", played_len, half_length),
+    }
+    played_len >= half_length
 }
 
 async fn handle_player_join(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
