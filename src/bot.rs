@@ -334,10 +334,10 @@ impl MyBot {
     }
     
     pub async fn cleanup_after_match(&mut self) -> Result<(), Box<dyn Error>> {
-        self.approved_abort_list.clear().await?;
-        self.approved_skip_list.clear().await?;
-        self.approved_start_list.clear().await?;
-        self.approved_close_list.clear().await?;
+        self.approved_abort_list.clear();
+        self.approved_skip_list.clear();
+        self.approved_start_list.clear();
+        self.approved_close_list.clear();
         Ok(())
     }
 
