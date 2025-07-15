@@ -332,6 +332,14 @@ impl MyBot {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp close").await?;
         Ok(())
     }
+    
+    pub async fn cleanup_after_match(&mut self) -> Result<(), Box<dyn Error>> {
+        self.approved_abort_list.clear().await?;
+        self.approved_skip_list.clear().await?;
+        self.approved_start_list.clear().await?;
+        self.approved_close_list.clear().await?;
+        Ok(())
+    }
 
     pub async fn send_queue(&mut self) -> Result<(), Box<dyn Error>> {
         let queue = self.room_host_list.iter()
