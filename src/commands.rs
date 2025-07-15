@@ -14,7 +14,7 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
             bot.send_beatmap_info().await?;
         }
         "!abort" => {
-            bot.abort_game().await?;
+            bot.vote_abort(&irc_name).await?;
         }
         "!queue" | "!q" => {
             bot.send_queue().await?;

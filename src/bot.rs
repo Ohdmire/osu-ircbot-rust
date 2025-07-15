@@ -362,6 +362,28 @@ impl MyBot {
         self.save_latest_info_to_file().expect("无法写入bot state");
         Ok(())
     }
+    
+    pub async fn vote_abort(&mut self, irc_name: &str) -> Result<(), Box<dyn Error>> {
+        // 判断irc_name是否在player_list中
+        if self.player_list.contains(&irc_name.to_string()) {
+            // 如果不在approved_abort_list中，则添加到approved_abort_list中
+            if !self.approved_abort_list.contains(&irc_name.to_string()) {
+                self.approved_abort_list.push(irc_name.to_string());
+            }
+
+            // 判断列表是否满足人数的一半 或者是房主本人
+            if self.approved_abort_list.len() >= (self.player_list.len() / 2) || irc_name == self.room_host.replace(" ", "_") {
+                self.abort_game().await?;
+                self.approved_abort_list.clear();
+            }
+            else {
+                self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("{} / {} in the abort process", self.approved_abort_list.len(), (self.player_list.len() as f64 / 2.0).ceil() as usize)).await?;
+            }
+        }
+        Ok(())
+            
+        
+    }
 
     pub async fn vote_skip(&mut self, irc_name: &str) -> Result<(), Box<dyn Error>> {
         // 判断irc_name是否在player_list中
