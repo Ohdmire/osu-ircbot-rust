@@ -146,8 +146,6 @@ async fn handle_match_finish(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     // 清理投票列表
     bot.cleanup_after_match().await?;
     println!("Match finished");
-    // 比赛结束时，删除不在player_list中的玩家
-    bot.remove_player_not_in_list();
     if is_fully_played(bot) {
         bot.rotate_host().await?;
     }
@@ -165,8 +163,6 @@ async fn handle_match_abort(bot: &mut MyBot) -> Result<(), Box<dyn Error>> {
     // 清理投票列表
     bot.cleanup_after_match().await?;
     println!("Match aborted");
-    // 比赛丢弃时时，删除不在player_list中的玩家
-    bot.remove_player_not_in_list();
     if is_fully_played(bot) {
         bot.rotate_host().await?;
     }

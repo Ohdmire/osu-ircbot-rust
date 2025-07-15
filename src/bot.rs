@@ -205,6 +205,8 @@ impl MyBot {
     }
 
     pub async fn rotate_host(&mut self) -> Result<(), Box<dyn Error>> {
+        //轮换房主前，删除不在player_list中的玩家
+        self.remove_player_not_in_list();
         if !self.room_host_list.is_empty() {
             let old_host = self.room_host_list.remove(0);
             self.room_host_list.push(old_host);
