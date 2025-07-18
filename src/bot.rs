@@ -163,7 +163,7 @@ impl MyBot {
                 }
                 if msg.starts_with("!") || msg.starts_with("！") {
                     let prefix = self.get_nickname(&message.prefix);
-                    handle_command(self, target, msg, prefix).await?;
+                    handle_command(self, &sender,target, msg, prefix).await?;
                 } else {
                     handle_event(self, &sender, msg).await?;
                 }

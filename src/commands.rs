@@ -2,7 +2,7 @@ use crate::{bot::MyBot, osu_api::UserScore, osu_api::RecentScoreResponse};
 use std::error::Error;
 use crate::charts::{Chart, ChartQuery};
 
-pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
+pub async fn handle_command(bot: &mut MyBot, sender: &str,target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
     let mut split = msg.splitn(2, char::is_whitespace); // 只分割一次
     let mut command = split.next().unwrap_or("").to_lowercase();
     let raw_args = split.next().unwrap_or("").trim();
@@ -17,7 +17,12 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
             bot.send_beatmap_info().await?;
         }
         "!pick"=> {
-            handle_pick(bot, target,raw_args).await?;
+            if sender == bot.room_host{
+                handle_pick(bot, target,raw_args).await?;
+            }
+            else { 
+                bot.send_message(target,"只有房主才能选歌哦").await?;
+            }
         }
         "!abort" => {
             bot.vote_abort(&irc_name).await?;
@@ -69,7 +74,7 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
     Ok(())
 }
 async fn handle_pick(bot: &mut MyBot, target: &str,parms:&str) -> Result<(), Box<dyn Error>> {
-    
+
     let query = match ChartQuery::parse(&parms.to_uppercase()) {
         Ok(q) => q,
         Err(e) => {
