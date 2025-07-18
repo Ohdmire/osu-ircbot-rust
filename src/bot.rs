@@ -1,6 +1,8 @@
 use crate::{pp_calculator, BotSettings};
 use crate::osu_api::{self, User};
 
+use crate::charts;
+
 use irc::client::prelude::*;
 
 use std::error::Error;
@@ -20,6 +22,7 @@ use std::fs::File;
 use std::io::{Write, Read};
 
 use serde::{Serialize, Deserialize};
+use crate::charts::ChartDatabase;
 
 #[derive(Serialize, Deserialize)]
 struct BotState {
@@ -31,6 +34,7 @@ struct BotState {
 
 pub struct MyBot {
     client: Client,
+    pub chart_db :ChartDatabase,
     pub bot_name: String,
     pub player_list: Vec<String>,
     pub room_host_list: Vec<String>,
@@ -69,6 +73,7 @@ impl MyBot {
         
         let bot = MyBot {
             client,
+            chart_db: ChartDatabase::open("charts.sqlite").unwrap(),
             bot_name: nickname.unwrap(),
             player_list: Vec::new(),
             room_host_list: Vec::new(),
@@ -160,7 +165,7 @@ impl MyBot {
                     let prefix = self.get_nickname(&message.prefix);
                     handle_command(self, target, msg, prefix).await?;
                 } else {
-                    handle_event(self, target, msg).await?;
+                    handle_event(self, &sender, msg).await?;
                 }
             }
             Command::JOIN(channel, _, _) => {
@@ -298,7 +303,7 @@ impl MyBot {
     }
 
     pub async fn send_menu(&mut self) -> Result<(), Box<dyn Error>> {
-        let help_text = "!queue(!q) 查看队列 | !abort 投票丢弃游戏 | !start 投票开始游戏 | !skip 投票跳过房主 | !pr(!p) 查询最近pass成绩 | !re(!r) 查询最近成绩 | !s 查询当前谱面最好成绩| !info(!i) 返回当前谱面信息| !ttl 查询剩余时间 | help(!h) 查看帮助 | !about 关于机器人";
+        let help_text = "!queue(!q) 查看队列 | !abort 投票丢弃游戏 | !start 投票开始游戏 | !skip 投票跳过房主 | !pr(!p) 查询最近pass成绩 | !re(!r) 查询最近成绩 | !s 查询当前谱面最好成绩| !info(!i) 返回当前谱面信息| !pick 挑选一张赛图| !ttl 查询剩余时间 | help(!h) 查看帮助 | !about 关于机器人";
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await),help_text).await?;
         Ok(())
     }
@@ -317,6 +322,11 @@ impl MyBot {
 
     pub async fn set_free_mod(&mut self) -> Result<(), Box<dyn Error>> {
         self.send_message(&format!("#mp_{}", *self.room_id.lock().await), "!mp mods FreeMod").await?;
+        Ok(())
+    }
+
+    pub async fn set_map(&mut self,map_id: i32) -> Result<(), Box<dyn Error>> {
+        self.send_message(&format!("#mp_{}", *self.room_id.lock().await), &format!("!mp map {}", map_id.to_string())).await?;
         Ok(())
     }
 

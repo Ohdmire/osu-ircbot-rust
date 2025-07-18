@@ -5,33 +5,38 @@ use crate::pp_calculator::PPCalculator;
 use std::path::Path;
 
 
-pub async fn handle_event(bot: &mut MyBot, target: &str, msg: &str) -> Result<(), Box<dyn Error>> {
-    match (target, msg) {
-        ("ATRI1024", m) if m.contains("Created the tournament match") => {
+pub async fn handle_event(bot: &mut MyBot, sender:&str, msg: &str) -> Result<(), Box<dyn Error>> {
+    // 如果不是 BanchoBot 的消息，直接忽略
+    if sender != "BanchoBot" {
+        return Ok(());
+    }
+    
+    match msg {
+        m if m.contains("Created the tournament match") => {
             handle_create_room(bot, m).await?;
         }
-        (_, m) if m.contains("Beatmap changed to") => {
+        m if m.contains("Beatmap") || m.contains("beatmap") => {
             handle_beatmap_change(bot, m).await?;
         }
-        (_, m) if m.contains("All players are ready") => {
+        m if m.contains("All players are ready") => {
             handle_match_ready(bot).await?;
         }
-        (_, m) if m.contains("The match has started") => {
+        m if m.contains("The match has started") => {
             handle_match_start(bot).await?;
         }
-        (_, m) if m.contains("The match has finished") => {
+        m if m.contains("The match has finished") => {
             handle_match_finish(bot).await?;
         }
-        (_, m) if m.contains("Aborted the match") => {
+        m if m.contains("Aborted the match") => {
             handle_match_abort(bot).await?;
         }
-        (_, m) if m.contains("joined in slot") => {
+        m if m.contains("joined in slot") => {
             handle_player_join(bot, m).await?;
         }
-        (_, m) if m.contains("left the game") => {
+        m if m.contains("left the game") => {
             handle_player_leave(bot, m).await?;
         }
-        (_, m) if m.starts_with("Slot") => {
+        m if m.starts_with("Slot") => {
             handle_slot(bot, m).await?;
         }
         _ => {}
@@ -64,9 +69,9 @@ async fn parse_room_id(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>>
 }
 
 async fn handle_beatmap_change(bot: &mut MyBot, msg: &str) -> Result<(), Box<dyn Error>> {
-    let re = Regex::new(r"Beatmap changed to: (.*) \((https://osu\.ppy\.sh/b/(\d+))\)")?;
+    let re = Regex::new(r"https://osu\.ppy\.sh/b/(\d+)")?;
     if let Some(captures) = re.captures(msg) {
-        if let Some(id) = captures.get(3) {
+        if let Some(id) = captures.get(1) {
             bot.beatmap_id = id.as_str().parse::<u32>()?;
             println!("Beatmap ID changed to: {}", bot.beatmap_id);
             

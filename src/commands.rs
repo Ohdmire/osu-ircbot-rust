@@ -1,8 +1,11 @@
 use crate::{bot::MyBot, osu_api::UserScore, osu_api::RecentScoreResponse};
 use std::error::Error;
+use crate::charts::{Chart, ChartQuery};
 
 pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
-    let mut command = msg.split_whitespace().next().unwrap_or("").to_lowercase();
+    let mut split = msg.splitn(2, char::is_whitespace); // 只分割一次
+    let mut command = split.next().unwrap_or("").to_lowercase();
+    let raw_args = split.next().unwrap_or("").trim(); // 保留后面的文本，不再拆词
     command = command.replace("！", "!");
     let irc_name = prefix.unwrap_or_default();
     match command.as_str() {
@@ -12,6 +15,9 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
         }
         "!info" | "!i" => {
             bot.send_beatmap_info().await?;
+        }
+        "!pick"=> {
+            handle_pick(bot, target,raw_args).await?;
         }
         "!abort" => {
             bot.vote_abort(&irc_name).await?;
@@ -62,6 +68,19 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
     }
     Ok(())
 }
+async fn handle_pick(bot: &mut MyBot, target: &str,parms:&str) -> Result<(), Box<dyn Error>> {
+    let query = ChartQuery::parse(&parms.to_uppercase())?;
+
+    if let Some(chart) = bot.chart_db.query_with_fallback(&query)? {
+        // println!("查询结果: {}", serde_json::to_string_pretty(&chart)?);
+        bot.set_map(chart.chart_id).await?;
+        let formatted_pick = format_pick(chart);
+        bot.send_message(target, &formatted_pick).await?;
+    } else {
+        bot.send_message(target, "没有找到匹配的谱面").await?;
+    }
+    Ok(())
+}
 
 async fn handle_recent_score(bot: &mut MyBot, target: &str, irc_name: &str, include_fails: bool) -> Result<(), Box<dyn Error>> {
     let user_id = bot.get_user_mut(irc_name).await.unwrap().id.clone();
@@ -86,6 +105,18 @@ async fn handle_recent_score(bot: &mut MyBot, target: &str, irc_name: &str, incl
         }
     }
     Ok(())
+}
+
+fn format_pick(chart_info:Chart) -> String {
+
+    format!(
+        "当前谱面来自: {} {} {} {}{}",
+        chart_info.competition_name.unwrap_or_default(),
+        chart_info.season.unwrap_or_default(),
+        chart_info.pool_name.unwrap_or_default(),
+        chart_info.chart_type.unwrap_or_default(),
+        chart_info.chart_type_index.unwrap_or_default(),
+    )
 }
 
 fn format_score(username: &str, score: &RecentScoreResponse) -> String {

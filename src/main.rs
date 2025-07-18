@@ -5,10 +5,13 @@ mod pp_calculator;
 mod osu_api;
 mod events;
 
+mod charts;
+
 use bot::MyBot;
 use config::get_config;
 use std::env;
 use dotenv::dotenv;
+use crate::charts::ChartDatabase;
 
 // bot设置
 pub struct BotSettings {
@@ -32,5 +35,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let mut bot = MyBot::new(config, client_id, client_secret,botsettings).await?;
     bot.run().await?;
+    
     Ok(())
 }
