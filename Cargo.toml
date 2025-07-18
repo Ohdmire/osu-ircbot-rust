@@ -1,6 +1,6 @@
 [package]
 name = "irc_bot"
-version = "0.9.9"
+version = "1.0.1"
 edition = "2024"
 
 [dependencies]

@@ -5,7 +5,7 @@ use crate::charts::{Chart, ChartQuery};
 pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Option<String>) -> Result<(), Box<dyn Error>> {
     let mut split = msg.splitn(2, char::is_whitespace); // 只分割一次
     let mut command = split.next().unwrap_or("").to_lowercase();
-    let raw_args = split.next().unwrap_or("").trim(); // 保留后面的文本，不再拆词
+    let raw_args = split.next().unwrap_or("").trim();
     command = command.replace("！", "!");
     let irc_name = prefix.unwrap_or_default();
     match command.as_str() {
@@ -69,7 +69,14 @@ pub async fn handle_command(bot: &mut MyBot, target: &str, msg: &str, prefix: Op
     Ok(())
 }
 async fn handle_pick(bot: &mut MyBot, target: &str,parms:&str) -> Result<(), Box<dyn Error>> {
-    let query = ChartQuery::parse(&parms.to_uppercase())?;
+    
+    let query = match ChartQuery::parse(&parms.to_uppercase()) {
+        Ok(q) => q,
+        Err(e) => {
+            bot.send_message(target, "输入的参数有误,请检查").await?;
+            return Ok(());
+        }
+    };
 
     if let Some(chart) = bot.chart_db.query_with_fallback(&query)? {
         // println!("查询结果: {}", serde_json::to_string_pretty(&chart)?);
@@ -110,10 +117,11 @@ async fn handle_recent_score(bot: &mut MyBot, target: &str, irc_name: &str, incl
 fn format_pick(chart_info:Chart) -> String {
 
     format!(
-        "当前谱面来自: {} {} {} {}{}",
+        "当前谱面来自: {} {} {}({}) {}{}",
         chart_info.competition_name.unwrap_or_default(),
         chart_info.season.unwrap_or_default(),
         chart_info.pool_name.unwrap_or_default(),
+        chart_info.pool_index.unwrap_or_default(),
         chart_info.chart_type.unwrap_or_default(),
         chart_info.chart_type_index.unwrap_or_default(),
     )

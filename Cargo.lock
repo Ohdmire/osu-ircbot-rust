@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "irc_bot"
-version = "0.9.9"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "dotenv",
